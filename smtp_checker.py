@@ -61,7 +61,8 @@ def test_oauth2(client_secret_data):
         
         # Use different flow for Colab vs local
         if IN_COLAB:
-            # For Colab, use the console flow
+            # For Colab, use the console flow with proper redirect_uri
+            flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'  # Out-of-band redirect for console apps
             print("Click the link below to authorize:")
             auth_url, _ = flow.authorization_url(prompt='consent')
             print(f"Authorization URL: {auth_url}")
