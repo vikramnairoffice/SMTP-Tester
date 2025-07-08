@@ -1,29 +1,6 @@
-# Gmail IMAP Credentials Checker Dependencies
-# Optimized for Google Colab environment
-
-# Core UI Framework
-gradio==3.41.2
-
-# Google OAuth2 and API Libraries
-google-auth>=2.0.0
-google-auth-oauthlib>=1.0.0
-google-auth-httplib2>=0.1.0
-google-api-python-client>=2.0.0
-
-# Data Processing
-pandas>=1.0.0
-
-# Progress Tracking
-tqdm>=4.0.0
-
-# Built-in Python Libraries (no installation required)
-# imaplib - IMAP client
-# email - Email parsing
-# json - JSON processing
-# logging - Logging utilities
-# base64 - Base64 encoding
-# csv - CSV file handling
-# datetime - Date/time utilities
-# typing - Type annotations
-# dataclasses - Data classes
-# enum - Enumerations
+gradio
+pandas
+tqdm
+google-auth
+google-auth-oauthlib
+google-api-python-client
