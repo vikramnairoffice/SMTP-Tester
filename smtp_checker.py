@@ -59,29 +59,36 @@ def test_oauth2(client_secret_data):
         SCOPES = ['https://mail.google.com/', 'https://www.googleapis.com/auth/userinfo.email']
         flow = InstalledAppFlow.from_client_config(client_secret_data, SCOPES)
         
-        # Handle different OAuth2 client configurations
+        # Manual OAuth2 flow (works in all environments including Colab)
         try:
-            # First try with existing redirect_uris from the client secret
+            # Always use manual flow - no browser needed
             if 'redirect_uris' in client_secret_data['installed']:
-                # Use the first redirect_uri from the client secret
                 redirect_uri = client_secret_data['installed']['redirect_uris'][0]
-                if redirect_uri == 'http://localhost':
-                    # Standard local server flow
-                    credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
-                else:
-                    # Manual flow for non-localhost redirect URIs
-                    flow.redirect_uri = redirect_uri
-                    auth_url, _ = flow.authorization_url(prompt='consent')
-                    print(f"Please visit this URL to authorize: {auth_url}")
-                    auth_code = input("Enter the authorization code from the URL: ")
-                    flow.fetch_token(code=auth_code)
-                    credentials = flow.credentials
             else:
-                # Fallback to local server
-                credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
+                redirect_uri = 'http://localhost'
+            
+            flow.redirect_uri = redirect_uri
+            auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+            
+            print("=" * 50)
+            print("MANUAL OAUTH2 AUTHORIZATION REQUIRED")
+            print("=" * 50)
+            print(f"1. Click this link: {auth_url}")
+            print("2. Sign in and authorize the application")
+            print("3. You'll be redirected to a page that shows an authorization code")
+            print("4. Copy that code and paste it below")
+            print("=" * 50)
+            
+            auth_code = input("Enter the authorization code: ").strip()
+            
+            if not auth_code:
+                raise Exception("No authorization code provided")
+            
+            flow.fetch_token(code=auth_code)
+            credentials = flow.credentials
+            
         except Exception as e:
             print(f"OAuth2 authentication failed: {str(e)}")
-            print("Make sure your OAuth2 client is configured as 'Desktop Application' type")
             raise Exception(f"OAuth2 flow failed: {str(e)}")
         
         # Get user email
