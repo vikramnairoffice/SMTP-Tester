@@ -59,16 +59,29 @@ def test_oauth2(client_secret_data):
         SCOPES = ['https://mail.google.com/', 'https://www.googleapis.com/auth/userinfo.email']
         flow = InstalledAppFlow.from_client_config(client_secret_data, SCOPES)
         
-        # Use local server for both Colab and local (Google deprecated OOB flow)
+        # Handle different OAuth2 client configurations
         try:
-            # Try local server first (works in both environments)
-            credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
+            # First try with existing redirect_uris from the client secret
+            if 'redirect_uris' in client_secret_data['installed']:
+                # Use the first redirect_uri from the client secret
+                redirect_uri = client_secret_data['installed']['redirect_uris'][0]
+                if redirect_uri == 'http://localhost':
+                    # Standard local server flow
+                    credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
+                else:
+                    # Manual flow for non-localhost redirect URIs
+                    flow.redirect_uri = redirect_uri
+                    auth_url, _ = flow.authorization_url(prompt='consent')
+                    print(f"Please visit this URL to authorize: {auth_url}")
+                    auth_code = input("Enter the authorization code from the URL: ")
+                    flow.fetch_token(code=auth_code)
+                    credentials = flow.credentials
+            else:
+                # Fallback to local server
+                credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
         except Exception as e:
-            # If local server fails, provide manual instructions
-            print("Local server failed. Please follow these manual steps:")
-            print("1. Go to Google Cloud Console")
-            print("2. Update your OAuth2 client to include 'http://localhost' in redirect URIs")
-            print("3. Or use a different OAuth2 client configured for installed applications")
+            print(f"OAuth2 authentication failed: {str(e)}")
+            print("Make sure your OAuth2 client is configured as 'Desktop Application' type")
             raise Exception(f"OAuth2 flow failed: {str(e)}")
         
         # Get user email
