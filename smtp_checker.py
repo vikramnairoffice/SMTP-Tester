@@ -61,7 +61,13 @@ def test_oauth2(client_secret_data):
         
         # Use different flow for Colab vs local
         if IN_COLAB:
-            credentials = flow.run_console()
+            # For Colab, use the console flow
+            print("Click the link below to authorize:")
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            print(f"Authorization URL: {auth_url}")
+            auth_code = input("Enter the authorization code: ")
+            flow.fetch_token(code=auth_code)
+            credentials = flow.credentials
         else:
             credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
         
