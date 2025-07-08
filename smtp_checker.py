@@ -59,18 +59,17 @@ def test_oauth2(client_secret_data):
         SCOPES = ['https://mail.google.com/', 'https://www.googleapis.com/auth/userinfo.email']
         flow = InstalledAppFlow.from_client_config(client_secret_data, SCOPES)
         
-        # Use different flow for Colab vs local
-        if IN_COLAB:
-            # For Colab, use the console flow with proper redirect_uri
-            flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'  # Out-of-band redirect for console apps
-            print("Click the link below to authorize:")
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            print(f"Authorization URL: {auth_url}")
-            auth_code = input("Enter the authorization code: ")
-            flow.fetch_token(code=auth_code)
-            credentials = flow.credentials
-        else:
+        # Use local server for both Colab and local (Google deprecated OOB flow)
+        try:
+            # Try local server first (works in both environments)
             credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
+        except Exception as e:
+            # If local server fails, provide manual instructions
+            print("Local server failed. Please follow these manual steps:")
+            print("1. Go to Google Cloud Console")
+            print("2. Update your OAuth2 client to include 'http://localhost' in redirect URIs")
+            print("3. Or use a different OAuth2 client configured for installed applications")
+            raise Exception(f"OAuth2 flow failed: {str(e)}")
         
         # Get user email
         service = build('people', 'v1', credentials=credentials)
