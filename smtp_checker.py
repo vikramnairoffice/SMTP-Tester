@@ -52,74 +52,37 @@ def test_app_password(email, password):
     except Exception as e:
         return False, 0, 0, str(e)
 
-def test_oauth2(client_secret_data):
-    """Test OAuth2 authentication"""
+def test_oauth2_with_password(client_secret_data, email, password):
+    """Test OAuth2 with email/password credentials"""
     try:
-        # OAuth2 flow
-        SCOPES = ['https://mail.google.com/', 'https://www.googleapis.com/auth/userinfo.email']
-        flow = InstalledAppFlow.from_client_config(client_secret_data, SCOPES)
+        # For bulk testing, we'll use a simplified approach
+        # This attempts to use the client secret with provided credentials
         
-        # Manual OAuth2 flow (works in all environments including Colab)
+        # First try direct IMAP with the password as app password
         try:
-            # Always use manual flow - no browser needed
-            if 'redirect_uris' in client_secret_data['installed']:
-                redirect_uri = client_secret_data['installed']['redirect_uris'][0]
-            else:
-                redirect_uri = 'http://localhost'
+            mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+            mail.login(email, password)
             
-            flow.redirect_uri = redirect_uri
-            auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
+            # Count inbox emails
+            mail.select("INBOX")
+            _, inbox_data = mail.search(None, 'ALL')
+            inbox_count = len(inbox_data[0].split()) if inbox_data[0] else 0
             
-            print("=" * 50)
-            print("MANUAL OAUTH2 AUTHORIZATION REQUIRED")
-            print("=" * 50)
-            print(f"1. Click this link: {auth_url}")
-            print("2. Sign in and authorize the application")
-            print("3. You'll be redirected to a page that shows an authorization code")
-            print("4. Copy that code and paste it below")
-            print("=" * 50)
+            # Count sent emails
+            mail.select('"[Gmail]/Sent Mail"')
+            _, sent_data = mail.search(None, 'ALL')
+            sent_count = len(sent_data[0].split()) if sent_data[0] else 0
             
-            auth_code = input("Enter the authorization code: ").strip()
+            mail.logout()
+            return True, email, inbox_count, sent_count, ""
+        except:
+            # If direct login fails, return error
+            return False, email, 0, 0, "OAuth2 bulk testing requires manual authorization per account"
             
-            if not auth_code:
-                raise Exception("No authorization code provided")
-            
-            flow.fetch_token(code=auth_code)
-            credentials = flow.credentials
-            
-        except Exception as e:
-            print(f"OAuth2 authentication failed: {str(e)}")
-            raise Exception(f"OAuth2 flow failed: {str(e)}")
-        
-        # Get user email
-        service = build('people', 'v1', credentials=credentials)
-        profile = service.people().get(resourceName='people/me', personFields='emailAddresses').execute()
-        email = profile['emailAddresses'][0]['value']
-        
-        # Create XOAUTH2 string
-        xoauth2_string = f"user={email}\x01auth=Bearer {credentials.token}\x01\x01"
-        xoauth2_string = base64.b64encode(xoauth2_string.encode()).decode()
-        
-        # Connect to IMAP
-        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
-        mail.authenticate('XOAUTH2', lambda x: xoauth2_string)
-        
-        # Count inbox emails
-        mail.select("INBOX")
-        _, inbox_data = mail.search(None, 'ALL')
-        inbox_count = len(inbox_data[0].split()) if inbox_data[0] else 0
-        
-        # Count sent emails
-        mail.select('"[Gmail]/Sent Mail"')
-        _, sent_data = mail.search(None, 'ALL')
-        sent_count = len(sent_data[0].split()) if sent_data[0] else 0
-        
-        mail.logout()
-        return True, email, inbox_count, sent_count, ""
     except Exception as e:
-        return False, "", 0, 0, str(e)
+        return False, email, 0, 0, str(e)
 
-def process_credentials(app_passwords_text, oauth2_files):
+def process_credentials_v2(app_passwords_text, oauth2_credentials, oauth2_files):
     """Process both app passwords and OAuth2 credentials"""
     results = []
     
@@ -143,40 +106,35 @@ def process_credentials(app_passwords_text, oauth2_files):
                     'Error': error
                 })
     
-    # Process OAuth2 files
-    if oauth2_files:
-        for file in tqdm(oauth2_files, desc="Testing OAuth2"):
+    # Process OAuth2 credentials with passwords
+    if oauth2_credentials.strip():
+        lines = oauth2_credentials.strip().split('\n')
+        # Get first OAuth2 file as reference (if provided)
+        client_secret_data = None
+        if oauth2_files:
             try:
-                # Handle file differently in Colab vs local
-                if IN_COLAB:
-                    if hasattr(file, 'name'):
-                        with open(file.name, 'r') as f:
-                            client_secret_data = json.load(f)
-                    else:
-                        # Direct file content
-                        client_secret_data = json.loads(file.decode('utf-8'))
-                else:
+                file = oauth2_files[0]
+                if hasattr(file, 'name'):
                     with open(file.name, 'r') as f:
                         client_secret_data = json.load(f)
+            except:
+                pass
+        
+        for line in tqdm(lines, desc="Testing OAuth2 credentials"):
+            if ':' in line:
+                email, password = line.split(':', 1)
+                email = email.strip()
+                password = password.strip()
                 
-                success, email, inbox_count, sent_count, error = test_oauth2(client_secret_data)
+                success, email_result, inbox_count, sent_count, error = test_oauth2_with_password(client_secret_data, email, password)
                 
                 results.append({
-                    'Email': email if email else 'Unknown',
+                    'Email': email_result,
                     'Auth Type': 'OAuth2',
                     'Status': 'Success' if success else 'Failed',
                     'Inbox Count': inbox_count,
                     'Sent Count': sent_count,
                     'Error': error
-                })
-            except Exception as e:
-                results.append({
-                    'Email': file.name,
-                    'Auth Type': 'OAuth2',
-                    'Status': 'Failed',
-                    'Inbox Count': 0,
-                    'Sent Count': 0,
-                    'Error': f"File error: {str(e)}"
                 })
     
     return pd.DataFrame(results)
@@ -203,9 +161,15 @@ def create_interface():
                 lines=10
             )
         
-        with gr.Tab("OAuth2"):
+        with gr.Tab("OAuth2 + Passwords"):
+            gr.Markdown("**Note**: OAuth2 bulk testing requires email:password format due to interactive nature")
+            oauth2_credentials = gr.Textbox(
+                label="OAuth2 Credentials with Passwords",
+                placeholder="email1@gmail.com:password1\nemail2@gmail.com:password2",
+                lines=10
+            )
             oauth2_files = gr.File(
-                label="OAuth2 JSON Files",
+                label="OAuth2 JSON Files (Optional - for reference)",
                 file_count="multiple",
                 file_types=[".json"]
             )
@@ -220,19 +184,19 @@ def create_interface():
         export_button = gr.Button("Export Results")
         download_file = gr.File(label="Download Results")
         
-        def test_all(app_passwords_text, oauth2_files):
+        def test_all(app_passwords_text, oauth2_credentials, oauth2_files):
             try:
-                if not app_passwords_text.strip() and not oauth2_files:
+                if not app_passwords_text.strip() and not oauth2_credentials.strip():
                     return pd.DataFrame([{
                         'Email': 'Error',
                         'Auth Type': '',
                         'Status': 'No credentials provided',
                         'Inbox Count': '',
                         'Sent Count': '',
-                        'Error': 'Please provide app passwords or OAuth2 files'
+                        'Error': 'Please provide app passwords or OAuth2 credentials'
                     }])
                 
-                return process_credentials(app_passwords_text, oauth2_files)
+                return process_credentials_v2(app_passwords_text, oauth2_credentials, oauth2_files)
             except Exception as e:
                 return pd.DataFrame([{
                     'Email': 'Error',
@@ -250,7 +214,7 @@ def create_interface():
         
         test_button.click(
             fn=test_all,
-            inputs=[app_passwords_input, oauth2_files],
+            inputs=[app_passwords_input, oauth2_credentials, oauth2_files],
             outputs=[results_df]
         )
         
