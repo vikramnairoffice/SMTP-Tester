@@ -7,6 +7,14 @@ import gradio as gr
 from tqdm import tqdm
 import traceback
 import os
+import sys
+
+# Check if running in Colab
+try:
+    import google.colab
+    IN_COLAB = True
+except ImportError:
+    IN_COLAB = False
 
 # Install OAuth2 dependencies if needed
 try:
@@ -14,7 +22,11 @@ try:
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 except ImportError:
-    os.system("pip install google-auth google-auth-oauthlib google-api-python-client")
+    print("Installing OAuth2 dependencies...")
+    if IN_COLAB:
+        os.system("pip install google-auth google-auth-oauthlib google-api-python-client")
+    else:
+        os.system("pip install google-auth google-auth-oauthlib google-api-python-client")
     from google.auth.transport.requests import Request
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
@@ -46,7 +58,12 @@ def test_oauth2(client_secret_data):
         # OAuth2 flow
         SCOPES = ['https://mail.google.com/', 'https://www.googleapis.com/auth/userinfo.email']
         flow = InstalledAppFlow.from_client_config(client_secret_data, SCOPES)
-        credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
+        
+        # Use different flow for Colab vs local
+        if IN_COLAB:
+            credentials = flow.run_console()
+        else:
+            credentials = flow.run_local_server(port=0, access_type='offline', prompt='consent')
         
         # Get user email
         service = build('people', 'v1', credentials=credentials)
@@ -104,8 +121,17 @@ def process_credentials(app_passwords_text, oauth2_files):
     if oauth2_files:
         for file in tqdm(oauth2_files, desc="Testing OAuth2"):
             try:
-                with open(file.name, 'r') as f:
-                    client_secret_data = json.load(f)
+                # Handle file differently in Colab vs local
+                if IN_COLAB:
+                    if hasattr(file, 'name'):
+                        with open(file.name, 'r') as f:
+                            client_secret_data = json.load(f)
+                    else:
+                        # Direct file content
+                        client_secret_data = json.loads(file.decode('utf-8'))
+                else:
+                    with open(file.name, 'r') as f:
+                        client_secret_data = json.load(f)
                 
                 success, email, inbox_count, sent_count, error = test_oauth2(client_secret_data)
                 
@@ -212,4 +238,9 @@ def create_interface():
 
 if __name__ == "__main__":
     app = create_interface()
-    app.launch(share=True)
+    
+    # Launch with appropriate settings for environment
+    if IN_COLAB:
+        app.launch(share=True, debug=True, show_error=True)
+    else:
+        app.launch(share=True)
